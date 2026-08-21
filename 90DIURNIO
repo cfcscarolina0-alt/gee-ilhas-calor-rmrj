@@ -1,0 +1,101 @@
+// ======================================================
+// MODIS LST DIURNA - 8 DIAS - 1 km
+// Apenas imagens com >= 90% de pixels válidos
+// Ano: 2025
+// ======================================================
+
+
+// ======================
+// SHAPEFILE
+// ======================
+
+var geometry = ee.FeatureCollection(
+  "projects/boreal-fort-463311-r8/assets/shpRMRJ-20250711T015753Z-1-001"
+);
+
+// Centralizar mapa
+var geometry = ee.FeatureCollection(
+  "projects/boreal-fort-463311-r8/assets/RJRMPETROPOLISJSVFMK"
+);
+// Adicionar limite da área
+Map.addLayer(
+  geometry,
+  {color: "black"},
+  "RMRJ"
+);
+
+
+// ======================
+// COLEÇÃO MODIS
+// ======================
+
+var modis = ee.ImageCollection("MODIS/061/MOD11A2")
+  .select([
+    "LST_Day_1km",
+    "QC_Day"
+  ])
+  .filterDate("2025-01-01", "2026-01-01")
+  .filterBounds(geometry);
+
+
+// ======================
+// PROJEÇÃO DO MODIS
+// ======================
+
+var projMODIS = modis
+  .first()
+  .select("LST_Day_1km")
+  .projection();
+
+print("Projeção MODIS:", projMODIS);
+
+
+// ======================
+// FUNÇÃO DE MÁSCARA QC
+// ======================
+
+function maskLST(image) {
+
+  var qc = image.select("QC_Day");
+
+  // Bits 0-1 do QC_Day
+  //
+  // 00 = boa qualidade
+  // 01 = outra qualidade aceitável
+  // 10 = não produzido por nuvem
+  // 11 = não produzido por outros motivos
+  //
+  // Mantemos somente 00 e 01.
+
+  var mask = qc
+    .bitwiseAnd(3)
+    .lte(1);
+
+  return image.updateMask(mask);
+}
+
+
+// ======================
+// CONVERTER LST PARA °C
+// ======================
+
+var lstCelsius = modis.map(function(img) {
+
+  var masked = maskLST(img);
+
+  var lst = masked
+    .select("LST_Day_1km")
+    .multiply(0.02)
+    .subtract(273.15)
+    .rename("LST_Celsius");
+
+  return lst.copyProperties(
+    img,
+    ["system:time_start"]
+  );
+
+});
+
+
+// ======================
+//
